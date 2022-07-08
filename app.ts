@@ -4,7 +4,15 @@ import { validateAuth } from "./auth.ts";
 
 await dotenv.config({ export: true });
 
-async function handler(req: Request) {
+function GET() {
+  return Response.json({ todo: "SSR" });
+}
+
+function NO_SUPPORTED() {
+  return Response.json("No supported");
+}
+
+async function POST(req: Request) {
   try {
     const response = await validateAuth(req);
 
@@ -12,11 +20,13 @@ async function handler(req: Request) {
       return response;
     }
 
-    const { status, message, tweets, errors } = await getTweets([
-      "234",
-      "45235",
-      "345",
-    ]);
+    let ids: string[] = [];
+
+    if (req.body) {
+      ids = await req.json();
+    }
+
+    const { status, message, tweets, errors } = await getTweets(ids);
 
     return Response.json({
       status,
@@ -29,6 +39,19 @@ async function handler(req: Request) {
       { status: 500, message: error.message },
       { status: 500, statusText: "Server error" }
     );
+  }
+}
+
+function handler(req: Request) {
+  switch (req.method) {
+    case "GET":
+      return GET();
+
+    case "POST":
+      return POST(req);
+
+    default:
+      return NO_SUPPORTED();
   }
 }
 
