@@ -1,22 +1,35 @@
 import { std, dotenv } from "./deps.ts";
 import { getTweets } from "./lib/twitter.ts";
+import { validateAuth } from "./auth.ts";
 
-const { serve } = std;
-const { config } = dotenv;
+await dotenv.config({ export: true });
 
-config({ export: true });
+async function handler(req: Request) {
+  try {
+    const response = await validateAuth(req);
 
-serve(async () => {
-  const { status, message, tweets, errors } = await getTweets([
-    "234",
-    "45235",
-    "345",
-  ]);
+    if (response) {
+      return response;
+    }
 
-  return Response.json({
-    status,
-    message: message || "",
-    tweets,
-    errors: errors || [],
-  });
-});
+    const { status, message, tweets, errors } = await getTweets([
+      "234",
+      "45235",
+      "345",
+    ]);
+
+    return Response.json({
+      status,
+      message: message || "",
+      tweets,
+      errors: errors || [],
+    });
+  } catch (error) {
+    return Response.json(
+      { status: 500, message: error.message },
+      { status: 500, statusText: "Server error" }
+    );
+  }
+}
+
+std.serve(handler);

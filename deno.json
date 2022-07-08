@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "dev": "deno run --allow-read --allow-net --allow-env --watch app.ts",
+    "uuid": "deno run scripts/generate-uuid.ts",
+    "jwt": "deno run --allow-read --allow-env scripts/generate-jwt.ts"
+  }
+}
