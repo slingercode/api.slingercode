@@ -1,16 +1,54 @@
+import { ResponseTweet } from "../types/tweet.ts";
+
+const tweetMetadata = new Map<string, string[]>([
+  [
+    "expansions",
+    [
+      "author_id",
+      "referenced_tweets.id",
+      "attachments.media_keys",
+      "referenced_tweets.id.author_id",
+    ],
+  ],
+  [
+    "tweet.fields",
+    [
+      "id",
+      "text",
+      "author_id",
+      "created_at",
+      "attachments",
+      "public_metrics",
+      "referenced_tweets",
+    ],
+  ],
+  [
+    "user.fields",
+    ["id", "url", "name", "username", "verified", "profile_image_url"],
+  ],
+  [
+    "media.fields",
+    [
+      "url",
+      "type",
+      "width",
+      "height",
+      "media_key",
+      "duration_ms",
+      "public_metrics",
+      "preview_image_url",
+    ],
+  ],
+]);
+
 export async function getTweets(ids: string[]) {
   try {
-    const expansions =
-      "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id";
-    const tweetFields =
-      "attachments,author_id,public_metrics,created_at,id,in_reply_to_user_id,referenced_tweets,text";
-    const userFields =
-      "id,name,profile_image_url,protected,url,username,verified";
-    const mediaFields =
-      "duration_ms,height,media_key,preview_image_url,type,url,width,public_metrics";
+    const queryParams = [...tweetMetadata]
+      .map((opc) => `${opc[0]}=${opc[1].join(",")}`)
+      .join("&");
 
     const response = await fetch(
-      `https://api.twitter.com/2/tweets?ids=${ids}&expansions=${expansions}&tweet.fields=${tweetFields}&user.fields=${userFields}&media.fields=${mediaFields}`,
+      `https://api.twitter.com/2/tweets?ids=${ids}&${queryParams}`,
       {
         headers: {
           Authorization: `Bearer ${Deno.env.get("TWITTER_KEY")}`,
@@ -21,18 +59,68 @@ export async function getTweets(ids: string[]) {
     const {
       status = 200,
       detail = "",
-      data: tweets = [],
+      data = [],
       errors = [],
-    } = await response.json();
+      includes: { media = [], users = [], tweets = [] },
+    }: ResponseTweet = await response.json();
 
     if (status !== 200) {
       throw new Error(`${status} - ${detail}`);
     }
 
+    const getAuthor = (authorId: string) => {
+      const author = users.find((author) => author.id === authorId);
+
+      return {
+        ...author,
+        url: `https://twitter.com/${author.username}`,
+      };
+    };
+
+    const textFormat = (text: string) => {
+      const removeLinks = text.replace(/https:\/\/[\n\S]+/g, "");
+      const lt = removeLinks.replace("&lt;", "<");
+      const gt = lt.replace("&gt;", ">");
+
+      return gt.trim();
+    };
+
+    const getMedia = (mediaId: string) =>
+      media.find((media) => media.media_key === mediaId);
+
+    const getPostUrl = (username: string, id: string) =>
+      `https://twitter.com/${username}/status/${id}`;
+
+    const getReferencedTweet = (tweetId: string) => {
+      const tweet = tweets.find((_tweet) => _tweet.id === tweetId);
+
+      return {
+        id: tweet.id,
+        url: getPostUrl(getAuthor(tweet.author_id).username, tweet.id),
+        author: getAuthor(tweet.author_id),
+        text: textFormat(tweet.text),
+        created_at: tweet.created_at,
+        public_metrics: tweet.public_metrics,
+      };
+    };
+
     return {
       status,
-      tweets,
       errors,
+      tweets: data.map((tweet) => ({
+        id: tweet.id,
+        url: getPostUrl(getAuthor(tweet.author_id).username, tweet.id),
+        author: getAuthor(tweet.author_id),
+        text: textFormat(tweet.text),
+        created_at: tweet.created_at,
+        public_metrics: tweet.public_metrics,
+        referenced_tweets: (tweet.referenced_tweets || []).map((_tweet: any) =>
+          getReferencedTweet(_tweet.id)
+        ),
+        media: (tweet.attachments?.media_keys || []).map((key: any) =>
+          getMedia(key)
+        ),
+      })),
     };
   } catch (error) {
     return {
